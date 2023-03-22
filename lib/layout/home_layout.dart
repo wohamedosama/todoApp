@@ -1,6 +1,8 @@
+import 'package:conditional_builder_null_safety/conditional_builder_null_safety.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:to_do/constants.dart';
 import 'package:to_do/views/archived_tasks/archived_tasks.dart';
 import 'package:to_do/views/done_tasks/done_tasks.dart';
 import 'package:to_do/views/new_tasks/new_tasks.dart';
@@ -56,7 +58,14 @@ class _HomeLayoutState extends State<HomeLayout> {
           ),
         ),
       ),
-      body: screens[currentIndex],
+      body: ConditionalBuilder(
+        condition: tasks.isNotEmpty,
+        builder: (context) => screens[currentIndex],
+        fallback: (context) => const Center(
+            child: CircularProgressIndicator(
+          color: Colors.blueAccent,
+        )),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           if (isBottomSheetShown) {
@@ -65,70 +74,86 @@ class _HomeLayoutState extends State<HomeLayout> {
                 title: titleController.text,
                 date: dateController.text,
                 time: timeController.text,
-              ).then((value) {});
-              Navigator.pop(context);
-              isBottomSheetShown = false;
-              setState(() {
-                fabIcon = Icons.add;
+              ).then((value) {
+                getDateFromDatabase(database).then((value) {
+                  Navigator.pop(context);
+
+                  setState(() {
+                    isBottomSheetShown = false;
+                    fabIcon = Icons.add;
+                    tasks = value;
+                  });
+                });
               });
             }
           } else {
-            scaffoldKey.currentState!.showBottomSheet(
-              (context) {
-                return Container(
-                  color: Colors.white,
-                  padding: const EdgeInsets.all(20),
-                  child: Form(
-                    key: formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        DefaultTextFormFields(
-                          textEditingController: titleController,
-                          type: TextInputType.text,
-                          prefix: const Icon(Icons.title),
-                          label: 'Task Title',
+            scaffoldKey.currentState!
+                .showBottomSheet(
+                  (context) {
+                    return Container(
+                      color: Colors.white,
+                      padding: const EdgeInsets.all(20),
+                      child: Form(
+                        key: formKey,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            DefaultTextFormFields(
+                              textEditingController: titleController,
+                              type: TextInputType.text,
+                              prefix: const Icon(Icons.title),
+                              label: 'Task Title',
+                            ),
+                            const SizedBox(height: 15),
+                            DefaultTextFormFields(
+                              onTap: () {
+                                showTimePicker(
+                                  context: context,
+                                  initialTime: TimeOfDay.now(),
+                                ).then((value) {
+                                  timeController.text =
+                                      value!.format(context).toString();
+                                });
+                              },
+                              textEditingController: timeController,
+                              type: TextInputType.datetime,
+                              prefix: const Icon(Icons.watch_later_outlined),
+                              label: 'Task Time',
+                            ),
+                            const SizedBox(height: 15),
+                            DefaultTextFormFields(
+                                onTap: () {
+                                  showDatePicker(
+                                          context: context,
+                                          initialDate: DateTime.now(),
+                                          firstDate: DateTime.now(),
+                                          lastDate:
+                                              DateTime.parse('2050-12-31'))
+                                      .then((value) {
+                                    dateController.text =
+                                        DateFormat.yMMMd().format(value!);
+                                  });
+                                },
+                                textEditingController: dateController,
+                                type: TextInputType.datetime,
+                                prefix:
+                                    const Icon(Icons.calendar_month_outlined),
+                                label: 'Date Tasks'),
+                          ],
                         ),
-                        const SizedBox(height: 15),
-                        DefaultTextFormFields(
-                          onTap: () {
-                            showTimePicker(
-                              context: context,
-                              initialTime: TimeOfDay.now(),
-                            ).then((value) {
-                              timeController.text =
-                                  value!.format(context).toString();
-                            });
-                          },
-                          textEditingController: timeController,
-                          type: TextInputType.datetime,
-                          prefix: const Icon(Icons.watch_later_outlined),
-                          label: 'Task Time',
-                        ),
-                        const SizedBox(height: 15),
-                        DefaultTextFormFields(
-                            onTap: () {
-                              showDatePicker(
-                                      context: context,
-                                      initialDate: DateTime.now(),
-                                      firstDate: DateTime.now(),
-                                      lastDate: DateTime.parse('2050-12-31'))
-                                  .then((value) {
-                                dateController.text =
-                                    DateFormat.yMMMd().format(value!);
-                              });
-                            },
-                            textEditingController: dateController,
-                            type: TextInputType.datetime,
-                            prefix: const Icon(Icons.calendar_month_outlined),
-                            label: 'Date Tasks'),
-                      ],
-                    ),
-                  ),
-                );
-              },
-              elevation: 15,
-            );
+                      ),
+                    );
+                  },
+                  elevation: 15,
+                )
+                .closed
+                .then((value) {
+                  isBottomSheetShown = false;
+
+                  setState(() {
+                    fabIcon = (Icons.add);
+                  });
+                });
             isBottomSheetShown = true;
 
             setState(() {
@@ -163,10 +188,6 @@ class _HomeLayoutState extends State<HomeLayout> {
     );
   }
 
-  // Future<String> getName() async {
-  //   return 'Ahmed Ali';
-  // }
-
   void createDatabase() async {
     database = await openDatabase(
       'todo.db',
@@ -182,7 +203,10 @@ class _HomeLayoutState extends State<HomeLayout> {
           print('error is ${e.toString()}');
         }
       },
-      onOpen: (database) {
+      onOpen: (database) async {
+        await getDateFromDatabase(database).then((value) {
+          tasks = value;
+        });
         print('database opened');
       },
     );
@@ -203,5 +227,9 @@ class _HomeLayoutState extends State<HomeLayout> {
         print('error is ${e.toString()}');
       }
     });
+  }
+
+  Future<List<Map>> getDateFromDatabase(database) async {
+    return await database!.rawQuery('SELECT * FROM tasks');
   }
 }
