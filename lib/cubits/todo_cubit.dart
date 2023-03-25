@@ -31,7 +31,9 @@ class TodoCubit extends Cubit<TodoState> {
   }
 
   Database? database;
-  List<Map> tasks = [];
+  List<Map> newTasks = [];
+  List<Map> doneTasks = [];
+  List<Map> archivedTasks = [];
 
   void createDatabase() {
     openDatabase('todo.db', version: 1, onCreate: (database, version) {
@@ -45,10 +47,7 @@ class TodoCubit extends Cubit<TodoState> {
         print('Error  When Creating is  ${e.toString()}');
       });
     }, onOpen: (database) {
-      getDateFromDatabase(database).then((value) {
-        tasks = value;
-        emit(TodoGetDataBase());
-      });
+      getDateFromDatabase(database);
     }).then((value) {
       database = value;
       emit(TodoCreateDataBase());
@@ -67,19 +66,54 @@ class TodoCubit extends Cubit<TodoState> {
         );
         print('Inserted successfully');
         emit(TodoInsertDataBase());
-        getDateFromDatabase(database).then((value) {
-          tasks = value;
-          emit(TodoGetDataBase());
-        });
+        getDateFromDatabase(database);
       } catch (e) {
         print('error is ${e.toString()}');
       }
     });
   }
 
-  Future<List<Map>> getDateFromDatabase(database) async {
+  void getDateFromDatabase(database) {
+    newTasks = [];
+    doneTasks = [];
+    archivedTasks = [];
     emit(TodoGetDataBaseLoadingState());
-    return await database!.rawQuery('SELECT * FROM tasks');
+    database!.rawQuery('SELECT * FROM tasks').then((value) {
+      emit(TodoGetDataBase());
+      value.forEach((element) {
+        if (element['status'] == 'new') {
+          newTasks.add(element);
+        } else if (element['status'] == 'done') {
+          doneTasks.add(element);
+        } else if (element['status'] == 'archived') {
+          archivedTasks.add(element);
+        }
+      });
+      emit(TodoGetDataBase());
+    });
+    ;
+  }
+
+  void recordsUpdate({
+    required String status,
+    required int id,
+  }) {
+    database!.rawUpdate(
+      'UPDATE tasks SET status = ? WHERE id = ?',
+      [status, id],
+    ).then((value) {
+      getDateFromDatabase(database);
+      emit(TodoUpDateDataBase());
+    });
+  }
+
+  void recordsDelete({
+    required int id,
+  }) {
+    database!.rawDelete('DELETE FROM tasks WHERE id = ?', [id]).then((value) {
+      getDateFromDatabase(database);
+      emit(TodoDeleteDataBase());
+    });
   }
 
   bool isBottomSheetShown = false;
