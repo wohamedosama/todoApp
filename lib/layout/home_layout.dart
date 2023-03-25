@@ -2,23 +2,15 @@ import 'package:conditional_builder_null_safety/conditional_builder_null_safety.
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:to_do/constants.dart';
 import 'package:to_do/cubits/todo_cubit.dart';
-import 'package:to_do/views/archived_tasks/archived_tasks.dart';
-import 'package:to_do/views/done_tasks/done_tasks.dart';
-import 'package:to_do/views/new_tasks/new_tasks.dart';
 import 'package:to_do/widget/defualt%20_form_fileds.dart';
 
 class HomeLayout extends StatelessWidget {
-  Database? database;
   var formKey = GlobalKey<FormState>();
   var scaffoldKey = GlobalKey<ScaffoldState>();
   var titleController = TextEditingController();
   var dateController = TextEditingController();
   var timeController = TextEditingController();
-  bool isBottomSheetShown = false;
-  IconData fabIcon = Icons.edit;
 
   // @override
   // void initState() {
@@ -29,9 +21,13 @@ class HomeLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (context) => TodoCubit(),
+      create: (context) => TodoCubit()..createDatabase(),
       child: BlocConsumer<TodoCubit, TodoState>(
-        listener: (context, state) {},
+        listener: (context, state) {
+          if (state is TodoInsertDataBase) {
+            Navigator.pop(context);
+          }
+        },
         builder: (context, state) {
           TodoCubit todoCubit = TodoCubit.get(context);
           return Scaffold(
@@ -46,7 +42,7 @@ class HomeLayout extends StatelessWidget {
               ),
             ),
             body: ConditionalBuilder(
-              condition: true,
+              condition: state is! TodoGetDataBaseLoadingState,
               builder: (context) => todoCubit.screens[todoCubit.currentIndex],
               fallback: (context) => const Center(
                   child: CircularProgressIndicator(
@@ -55,23 +51,13 @@ class HomeLayout extends StatelessWidget {
             ),
             floatingActionButton: FloatingActionButton(
               onPressed: () {
-                if (isBottomSheetShown) {
+                if (todoCubit.isBottomSheetShown) {
                   if (formKey.currentState!.validate()) {
-                    insetToDatabase(
+                    todoCubit.insetToDatabase(
                       title: titleController.text,
                       date: dateController.text,
                       time: timeController.text,
-                    ).then((value) {
-                      getDateFromDatabase(database).then((value) {
-                        Navigator.pop(context);
-
-                        // setState(() {
-                        //   isBottomSheetShown = false;
-                        //   fabIcon = Icons.add;
-                        //   tasks = value;
-                        // });
-                      });
-                    });
+                    );
                   }
                 } else {
                   scaffoldKey.currentState!
@@ -136,20 +122,18 @@ class HomeLayout extends StatelessWidget {
                       )
                       .closed
                       .then((value) {
-                        isBottomSheetShown = false;
-
-                        // setState(() {
-                        //   fabIcon = (Icons.add);
-                        // });
+                        todoCubit.changeBottomSheet(
+                          icons: Icons.add,
+                          isShow: false,
+                        );
                       });
-                  isBottomSheetShown = true;
-
-                  // setState(() {
-                  //   fabIcon = Icons.edit;
-                  // });
+                  todoCubit.changeBottomSheet(
+                    icons: Icons.edit,
+                    isShow: true,
+                  );
                 }
               },
-              child: Icon(fabIcon),
+              child: Icon(todoCubit.fabIcon),
             ),
             bottomNavigationBar: BottomNavigationBar(
               currentIndex: todoCubit.currentIndex,
@@ -176,50 +160,5 @@ class HomeLayout extends StatelessWidget {
         },
       ),
     );
-  }
-
-  void createDatabase() async {
-    database = await openDatabase(
-      'todo.db',
-      version: 1,
-      onCreate: (database, version) async {
-        try {
-          print('database created');
-
-          await database.execute(
-              'CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT, date TEXT, time TEXT, status TEXT)');
-          print('table created');
-        } catch (e) {
-          print('error is ${e.toString()}');
-        }
-      },
-      onOpen: (database) async {
-        await getDateFromDatabase(database).then((value) {
-          tasks = value;
-        });
-        print('database opened');
-      },
-    );
-  }
-
-  Future insetToDatabase({
-    required String title,
-    required String date,
-    required String time,
-  }) async {
-    return await database!.transaction((txn) async {
-      try {
-        txn.rawInsert(
-          'INSERT INTO tasks(title ,date ,time ,status) VALUES("$title", "$date", "$time", "new")',
-        );
-        print('Inserted successfully');
-      } catch (e) {
-        print('error is ${e.toString()}');
-      }
-    });
-  }
-
-  Future<List<Map>> getDateFromDatabase(database) async {
-    return await database!.rawQuery('SELECT * FROM tasks');
   }
 }
